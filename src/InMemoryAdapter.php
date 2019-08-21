@@ -9,7 +9,6 @@ use React\EventLoop\LoopInterface;
 use React\Promise\Deferred;
 use React\Promise\FulfilledPromise;
 use React\Promise\PromiseInterface;
-use SplQueue;
 
 /**
  * Class InMemoryAdapter
@@ -45,14 +44,14 @@ class InMemoryAdapter implements LockerAdapter
      *
      * @param Locker $locker
      * @param string $resourceID
-     * @param float $timeout
+     * @param int $timeout
      *
      * @return PromiseInterface
      */
     public function enqueue(
         Locker $locker,
         string $resourceID,
-        float $timeout
+        int $timeout
     ) : PromiseInterface
     {
         $deferred = new Deferred();
@@ -63,7 +62,7 @@ class InMemoryAdapter implements LockerAdapter
                 ->loop
                 ->addTimer($timeout, function () use ($deferred, $resourceID) {
                     unset($this->deferreds[$resourceID][spl_object_hash($deferred)]);
-                    $deferred->reject();
+                    $deferred->reject(new TimeoutException());
                 });
         }
 
@@ -76,11 +75,7 @@ class InMemoryAdapter implements LockerAdapter
 
         $this->deferreds[$resourceID][spl_object_hash($deferred)] = $deferred;
 
-        return $deferred
-            ->promise()
-            ->then(function() use ($locker) {
-                return $locker;
-            });
+        return $promise;
     }
 
     /**

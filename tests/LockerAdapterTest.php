@@ -10,6 +10,7 @@ use React\Locker\Locker;
 use React\Locker\LockerAdapter;
 use React\Locker\LockerFactory;
 use Clue\React\Block;
+use React\Locker\TimeoutException;
 
 /**
  * Class LockerAdapterTest
@@ -27,6 +28,8 @@ abstract class LockerAdapterTest extends TestCase
 
     /**
      * Simple test
+     *
+     * @group exec
      */
     public function testSimple()
     {
@@ -36,7 +39,7 @@ abstract class LockerAdapterTest extends TestCase
         $finished = 0;
         $current = 0;
         $promises = [];
-        $numberOfConcurrency = 5;
+        $numberOfConcurrency = 3;
 
         for ($i=0; $i<$numberOfConcurrency; $i++) {
             $locker = LockerFactory::create($adapter, 'res1');
@@ -62,7 +65,6 @@ abstract class LockerAdapterTest extends TestCase
                 });
         }
 
-        $loop->run();
         Block\awaitAll($promises, $loop);
         $this->assertEquals($current, 0);
         $this->assertEquals($finished, $numberOfConcurrency);
@@ -81,10 +83,10 @@ abstract class LockerAdapterTest extends TestCase
         $failed = false;
 
         $promise1 = $locker
-            ->enqueue(0.1)
+            ->enqueue(1)
             ->then(function(Locker $locker) use ($loop) {
 
-                Block\sleep(1, $loop);
+                Block\sleep(2, $loop);
                 return $locker;
             })
             ->then(function(Locker $locker) {
@@ -93,15 +95,14 @@ abstract class LockerAdapterTest extends TestCase
 
 
         $promise2 = $locker
-            ->enqueue(0.1)
+            ->enqueue(1)
             ->then(function(Locker $locker) use (&$finished) {
 
                 $finished = true;
-            }, function() use (&$failed) {
+            }, function(TimeoutException $exception) use (&$failed) {
                 $failed = true;
             });
 
-        $loop->run();
         Block\awaitAll([$promise1, $promise2], $loop);
         $this->assertFalse($finished);
         $this->assertTrue($failed);

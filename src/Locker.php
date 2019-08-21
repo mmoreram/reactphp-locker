@@ -56,11 +56,11 @@ class Locker
     /**
      * Acquire locker
      *
-     * @param float $timeout
+     * @param int $timeout
      *
      * @return PromiseInterface
      */
-    public function enqueue(float $timeout = 0.0) : PromiseInterface
+    public function enqueue(int $timeout = 0) : PromiseInterface
     {
         return $this
             ->adapter

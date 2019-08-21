@@ -17,14 +17,14 @@ interface LockerAdapter
      *
      * @param Locker $locker
      * @param string $resourceID
-     * @param float $timeout
+     * @param int $timeout
      *
      * @return PromiseInterface
      */
     public function enqueue(
         Locker $locker,
         string $resourceID,
-        float $timeout
+        int $timeout
     ) : PromiseInterface;
 
     /**
