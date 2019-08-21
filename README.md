@@ -6,7 +6,8 @@ Async locker for [ReactPHP](https://reactphp.org/)
 - [Quickstart example](#quickstart-example)
 - [Timeout](#timeout)
 - [Adapters](#adapters)
-    - [InMemory](#inmemory)
+    - [InMemory](#inmemory-adapter)
+    - [Redis](#redis-adapter)
     
 ## Quickstart example
 
