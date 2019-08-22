@@ -22,7 +22,7 @@ alive in the same PHP thread.
 ```php
 $loop = React\EventLoop\Factory::create();
 $adapter = new InMemoryAdapter($loop);
-$locker = LockerFactort::create($adapter, 'res1');
+$locker = LockerFactory::create($adapter, 'res1');
 
 $promise = $locker
     ->acquire(function(Locker $locker) {
