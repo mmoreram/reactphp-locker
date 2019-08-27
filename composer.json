@@ -1,5 +1,5 @@
 {
-    "name": "react/locker",
+    "name": "mmoreram/react-locker",
     "description": "Event-driven locker for ReactPHP",
     "keywords": ["event-driven", "locker", "ReactPHP"],
     "license": "MIT",
@@ -19,6 +19,7 @@
         "react/filesystem": "^0.1",
         "clue/redis-react": "^2.3",
         "clue/buzz-react": "*",
+        "mmoreram/react-functions": "dev-master@dev",
         "phpunit/phpunit": "^7.0"
     }
 }

@@ -6,23 +6,15 @@
 namespace React\Locker;
 
 use Clue\React\Redis\Client;
-use Clue\React\Redis\Factory;
 use React\EventLoop\LoopInterface;
-use React\Promise\FulfilledPromise;
+use React\Promise\Deferred;
 use React\Promise\PromiseInterface;
 
 /**
  * Class RedisAdapter
  */
-class RedisAdapter implements LockerAdapter
+final class RedisAdapter extends DeferredCollectionAdapter
 {
-    /**
-     * Loop
-     *
-     * @var LoopInterface
-     */
-    private $loop;
-
     /**
      * Client
      *
@@ -31,7 +23,7 @@ class RedisAdapter implements LockerAdapter
     private $client;
 
     /**
-     * Client2
+     * Subscriber Client
      *
      * @var Client
      */
@@ -50,108 +42,139 @@ class RedisAdapter implements LockerAdapter
         Client $client2
     )
     {
-        $this->loop = $loop;
+        parent::__construct($loop);
+
         $this->client = $client;
         $this->client2 = $client2;
+        $channelExp = '*.channel';
+        $client2->psubscribe($channelExp);
+        $client2->on('pmessage', function ($currentChannelExp, $channel, $payload) use ($channelExp) {
+
+            if ($channelExp !== $currentChannelExp) {
+                return;
+            }
+
+            $resourceID = str_replace('.channel', '', $channel);
+            $deferred = $this->getDeferred($payload, $resourceID, true);
+
+            if (!is_null($deferred)) {
+                $deferred->resolve();
+            }
+        });
     }
 
     /**
-     * Create by credentials
+     * On enqueue action.
      *
-     * @param LoopInterface $loop
-     * @param Factory $factory
-     * @param string $target
+     * Timeout value are in milliseconds.
      *
-     * @return RedisAdapter
-     */
-    public static function createByCredentials(
-        LoopInterface $loop,
-        Factory $factory,
-        string $target
-    ) : RedisAdapter
-    {
-        return new self(
-            $loop,
-            $factory->createLazyClient($target),
-            $factory->createLazyClient($target)
-        );
-    }
-
-    /**
-     * Enqueue
-     *
-     * @param Locker $locker
      * @param string $resourceID
-     * @param int $timeout
+     * @param Locker $locker
+     * @param int $timeoutMilliseconds
+     * @param Deferred $deferred
      *
      * @return PromiseInterface
      */
-    public function enqueue(
-        Locker $locker,
+    protected function onEnqueue(
         string $resourceID,
-        int $timeout
-    ) : PromiseInterface
+        Locker $locker,
+        int $timeoutMilliseconds,
+        Deferred $deferred
+    ): PromiseInterface
     {
         return $this
-            ->client2
+            ->client
             ->eval('
-                local resource = ARGV[1];
-                local locker = ARGV[2];
-                local hash = resource .. ".hash";
-                local channel = resource .. ".channel";
-                local len = redis.call("hlen", hash);
-                redis.call("hset", hash, locker, 1);
-                local enqueued = 0;
-                if (len == 0) then
-                    enqueued = redis.call("lpush", channel, "hola");
-                end
-                return enqueued;
-            ', 2, 'resource', 'locker', $resourceID, $locker->ID())
-            ->then(function($enqueued) use ($resourceID, $timeout) {
+                    local resource = ARGV[1];
+                    local locker = ARGV[2];
+                    local timeout = tonumber(ARGV[3]);
+                    
+                    local registry = resource .. ".registry";
+                    local combined = resource .. "~~" .. locker .. ".combined";
+                    local ownerKey = resource .. ".owner";
+                    
+                    local list = resource .. ".list";
+                    local channel = resource .. ".channel";
+                    
+                    local owner = redis.call("get", ownerKey);
+                    
+                    if (type(owner) == "string") then
+                        redis.call("hset", registry, locker, "1");
+                        redis.call("rpush", list, locker);
+                        redis.call("set", combined, timeout);
 
-                return $this
-                    ->client
-                    ->blpop($resourceID . '.channel', (int) $timeout)
-                    ->then(function($value) {
-                        if (is_null($value)) {
-                            throw new TimeoutException;
-                        }
-                    });
-            });
+                        if (timeout > 0) then
+                            redis.call("pexpire", combined, timeout);
+                        end
+                    else
+                        redis.call("set", ownerKey, locker);
+                        redis.call("publish", channel, locker);
+                    end
+                ', 3, 'resource', 'locker', 'timeout', $resourceID, $locker->ID(), $timeoutMilliseconds
+            );
     }
 
     /**
-     * Release
+     * Assign next owner
      *
-     * @param Locker $locker
      * @param string $resourceID
+     * @param Locker $locker
      *
-     * @return PromiseInterface
+     * @return PromiseInterface|mixed
      */
-    public function release(
-        Locker $locker,
-        string $resourceID
-    ) : PromiseInterface
+    protected function assignNextOwner(
+        string $resourceID,
+        Locker $locker
+    )
     {
-        if ($locker->owns()) {
-
-            return $this
-                ->client2
-                ->eval('
+        return $this
+            ->client
+            ->eval('
                     local resource = ARGV[1];
                     local locker = ARGV[2];
-                    local hash = resource .. ".hash";
+                    
+                    local registry = resource .. ".registry";
+                    local combined = resource .. "~~" .. locker .. ".combined";
+                    local ownerKey = resource .. ".owner";
+                    
+                    local list = resource .. ".list";
                     local channel = resource .. ".channel";
-                    redis.call("hdel", hash, locker);
-                    local len = redis.call("hlen", hash);
-                    local enqueued = 0;
-                    if (len > 0) then
-                        enqueued = redis.call("lpush", channel, "hola2");
+                    
+                    redis.call("del", ownerKey);
+                    
+                    local nextLocker = nil;
+                    local nextCombined = nil;
+                    local missing = 0;
+                    local ok = false;
+                        
+                    repeat
+                        nextLocker = redis.call("lpop", list);
+                        if (type(nextLocker) == "string") then
+                            nextCombined = resource .. "~~" .. nextLocker .. ".combined";
+                            
+                            if (redis.call("hexists", registry, nextLocker) == 1) then
+                                if (redis.call("exists", nextCombined) == 1) then
+                                    ok = true;
+                                else
+                                    redis.call("hdel", registry, nextLocker);
+                                end
+                            elseif (redis.call("llen", list) == 0) then
+                                ok = true;
+                                nextLocker = nil
+                            end
+                        else
+                            ok = true;
+                        end
+                    until(ok == true)
+                    
+                    if (type(nextLocker) == "string") then
+                    
+                        redis.call("hdel", registry, nextLocker);
+                        redis.call("del", nextCombined);
+                        redis.call("set", ownerKey, nextLocker);
+                        redis.call("publish", channel, nextLocker);
                     end
-                    return enqueued;
-                ', 2, 'resource', 'locker', $resourceID, $locker->ID());
-        }
-
-        return new FulfilledPromise();
+                ', 2, 'resource', 'locker', $resourceID, $locker->ID()
+            );
     }
 }

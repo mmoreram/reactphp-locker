@@ -13,86 +13,38 @@ use React\Promise\PromiseInterface;
 /**
  * Class InMemoryAdapter
  */
-class InMemoryAdapter implements LockerAdapter
+final class InMemoryAdapter extends DeferredCollectionAdapter
 {
     /**
-     * Loop
+     * Locked deferred
      *
-     * @var LoopInterface
+     * @var Deferred[]
      */
-    private $loop;
+    private $currentDeferred = [];
 
     /**
-     * Deferreds
+     * On enqueue action.
      *
-     * @var array
-     */
-    private $deferreds = [];
-
-    /**
-     * InMemoryAdapter constructor.
+     * Timeout value are in milliseconds.
      *
-     * @param LoopInterface $loop
-     */
-    public function __construct(LoopInterface $loop)
-    {
-        $this->loop = $loop;
-    }
-
-    /**
-     * Enqueue
-     *
-     * @param Locker $locker
      * @param string $resourceID
-     * @param int $timeout
+     * @param Locker $locker
+     * @param int $timeoutMilliseconds
+     * @param Deferred $deferred
      *
      * @return PromiseInterface
      */
-    public function enqueue(
-        Locker $locker,
+    protected function onEnqueue(
         string $resourceID,
-        int $timeout
-    ) : PromiseInterface
-    {
-        $deferred = new Deferred();
-        $promise = $deferred->promise();
-
-        if ($timeout > 0) {
-            $this
-                ->loop
-                ->addTimer($timeout, function () use ($deferred, $resourceID) {
-                    unset($this->deferreds[$resourceID][spl_object_hash($deferred)]);
-                    $deferred->reject(new TimeoutException());
-                });
-        }
-
-        if (!isset($this->deferreds[$resourceID])) {
-            $this->deferreds[$resourceID] = [];
-            $deferred->resolve();
-
-            return $promise;
-        }
-
-        $this->deferreds[$resourceID][spl_object_hash($deferred)] = $deferred;
-
-        return $promise;
-    }
-
-    /**
-     * Release
-     *
-     * @param Locker $locker
-     * @param string $resourceID
-     *
-     * @return PromiseInterface
-     */
-    public function release(
         Locker $locker,
-        string $resourceID
-    ) : PromiseInterface
+        int $timeoutMilliseconds,
+        Deferred $deferred
+    ): PromiseInterface
     {
-        if ($locker->owns()) {
-            $this->assignNextOwner($resourceID);
+        if (!array_key_exists($resourceID, $this->currentDeferred)) {
+            $nextDeferred = $this->shiftDeferred($resourceID);
+            $this->currentDeferred[$resourceID] = $nextDeferred;
+            $nextDeferred->resolve();
         }
 
         return new FulfilledPromise();
@@ -102,14 +54,23 @@ class InMemoryAdapter implements LockerAdapter
      * Assign next owner
      *
      * @param string $resourceID
+     * @param Locker $locker
+     *
+     * @return PromiseInterface|mixed
      */
-    private function assignNextOwner(string $resourceID)
+    protected function assignNextOwner(
+        string $resourceID,
+        Locker $locker
+    )
     {
+        unset($this->currentDeferred[$resourceID]);
+
         if (
-            $this->deferreds[$resourceID] &&
+            array_key_exists($resourceID, $this->deferreds) &&
             count($this->deferreds[$resourceID]) > 0
         ) {
-            $nextDeferred = array_shift($this->deferreds[$resourceID]);
+            $nextDeferred = $this->shiftDeferred($resourceID);
+            $this->currentDeferred[$resourceID] = $nextDeferred;
             $nextDeferred->resolve();
         }
     }

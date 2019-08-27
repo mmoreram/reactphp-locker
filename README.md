@@ -2,12 +2,17 @@
 
 Async locker for [ReactPHP](https://reactphp.org/)
 
+[![CircleCI](https://circleci.com/gh/mmoreram/reactphp-locker.svg?style=svg)](https://circleci.com/gh/mmoreram/reactphp-locker)
+
 **Table of Contents**
 - [Quickstart example](#quickstart-example)
-- [Timeout](#timeout)
+- [Enqueue Timeout](#enqueue-timeout)
 - [Adapters](#adapters)
     - [InMemory](#inmemory-adapter)
     - [Redis](#redis-adapter)
+- [Install](#install)
+- [Tests](#tests)
+- [License](#license)
     
 ## Quickstart example
 
@@ -25,7 +30,8 @@ $adapter = new InMemoryAdapter($loop);
 $locker = LockerFactort::create($adapter, 'res1');
 
 $promise = $locker
-    ->acquire(function(Locker $locker) {
+    ->enqueue()
+    ->then(function(Locker $locker) {
         // Do whatever
     })
     ->release();
@@ -35,7 +41,7 @@ Only one requester will have the possibility to work with the same resource at
 the same time, and all other resource clients will be just waiting, without
 asking the resource once and again.
 
-## Timeout
+## Enqueue Timeout
 
 Your resource clients can easily forget about them by using some timeout. If the
 resource is not a must, or simply you want to throw an exception when the
@@ -43,12 +49,9 @@ resource is not been available for a while, then this is the place for this.
 
 ```php
 $promise = $locker
-    ->acquire(function(Locker $locker, 10) {
-        
-        // Do whatever during the next 10 seconds
-    }, function(TimeoutException $exception) {
-        
-        // After 10 seconds, nothing to do here
+    ->enqueue(10)
+    ->then(function(Locker $locker) {
+        // Do whatever
     })
     ->release();
 ```
@@ -84,10 +87,35 @@ $adapter = new RedisAdapter($loop, $client1, $client2);
 $locker = LockerFactory::create($adapter, 'res1');
 ```
 
-If you manually have to create the clients, then you can use the built-in
-factory method to build the adapter.
+## Install
 
-```php
-$adapter = RedisAdapter::createByCredentials($loop, new Factory($loop), 'localhost');
-$locker = LockerFactory::create($adapter, 'res1');
+The recommended way to install this library is [through Composer](https://getcomposer.org).
+[New to Composer?](https://getcomposer.org/doc/00-intro.md)
+
+This project follows [SemVer](https://semver.org/).
+This will install the latest supported version:
+
+```bash
+$ composer require mmoreram/react-locker:dev-master
 ```
+
+This library requires PHP7.
+
+## Tests
+
+To run the test suite, you first need to clone this repo and then install all
+dependencies [through Composer](https://getcomposer.org):
+
+```bash
+$ composer install
+```
+
+To run the test suite, go to the project root and run:
+
+```bash
+$ php vendor/bin/phpunit
+```
+
+## License
+
+This project is released under the permissive [MIT license](LICENSE).

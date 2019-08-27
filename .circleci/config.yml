@@ -1,0 +1,18 @@
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/php:7.1-cli
+      - image: redis:4-alpine
+
+    working_directory: ~/project
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+
+      - run:
+          name: Run tests
+          command: |
+            composer install -n --prefer-dist --no-suggest
+            php vendor/bin/phpunit

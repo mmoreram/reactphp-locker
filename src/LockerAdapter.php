@@ -15,6 +15,8 @@ interface LockerAdapter
     /**
      * Enqueue
      *
+     * Timeout value must be defined in milliseconds.
+     *
      * @param Locker $locker
      * @param string $resourceID
      * @param int $timeout

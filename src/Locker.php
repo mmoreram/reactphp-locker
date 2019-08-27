@@ -56,15 +56,17 @@ class Locker
     /**
      * Acquire locker
      *
-     * @param int $timeout
+     * Timeout value must be defined in milliseconds.
+     *
+     * @param int $timeoutMilliseconds
      *
      * @return PromiseInterface
      */
-    public function enqueue(int $timeout = 0) : PromiseInterface
+    public function enqueue(int $timeoutMilliseconds = 0) : PromiseInterface
     {
         return $this
             ->adapter
-            ->enqueue($this, $this->resourceID, $timeout)
+            ->enqueue($this, $this->resourceID, $timeoutMilliseconds)
             ->then(function() {
                 $this->owns = true;
                 return $this;

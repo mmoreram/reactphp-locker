@@ -21,6 +21,10 @@ class RedisLockerAdapterTest extends LockerAdapterTest
      */
     public function getAdapter(LoopInterface $loop = null) : LockerAdapter
     {
-        return RedisAdapter::createByCredentials($loop, new Factory($loop), 'localhost');
+        $factory = new Factory($loop);
+        $redis = $factory->createLazyClient('localhost');
+        $redis2 = $factory->createLazyClient('localhost');
+
+        return new RedisAdapter($loop, $redis, $redis2);
     }
 }
